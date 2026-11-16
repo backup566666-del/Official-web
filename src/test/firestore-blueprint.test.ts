@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import blueprint from "../../firebase-blueprint.json";
 
 const addDoc = vi.fn().mockResolvedValue({ id: "doc_1" });
+const getDoc = vi.fn();
 const getDocFromServer = vi.fn().mockResolvedValue({ exists: () => false });
 
 vi.mock("firebase/app", () => ({
@@ -14,17 +15,25 @@ vi.mock("firebase/auth", () => ({
   GoogleAuthProvider: class {
     setCustomParameters = vi.fn();
   },
-  getAuth: vi.fn(() => ({ currentUser: null })),
+  getAuth: vi.fn(() => ({
+    currentUser: {
+      uid: "uid_1",
+      email: "member@gmail.com",
+      emailVerified: true,
+      getIdToken: vi.fn().mockResolvedValue("mock-id-token"),
+    },
+  })),
 }));
 
 vi.mock("firebase/firestore", () => ({
   addDoc,
   collection: vi.fn((_db, name) => ({ path: name })),
   doc: vi.fn((_db, name, id) => ({ path: `${name}/${id}` })),
-  getDoc: vi.fn(),
+  getDoc,
   getDocFromServer,
   getDocs: vi.fn(),
   getFirestore: vi.fn(() => ({})),
+  initializeFirestore: vi.fn(() => ({})),
   query: vi.fn(),
   serverTimestamp: vi.fn(() => "SERVER_TIMESTAMP"),
   setDoc: vi.fn(),
@@ -35,6 +44,7 @@ vi.mock("firebase/firestore", () => ({
 
 const {
   ADMIN_EMAIL,
+  fetchDiscordConnection,
   formatFirestoreDate,
   isAdminUser,
   publishCommunityEvent,
@@ -113,5 +123,69 @@ describe("Firebase blueprint & Firestore validation", () => {
     expect(formatFirestoreDate("")).toBe("—");
     expect(formatFirestoreDate("not-a-date")).toBe("—");
     expect(formatFirestoreDate("2026-01-15T00:00:00Z")).not.toBe("—");
+  });
+
+  it("falls back to authenticated Firestore REST API when getDoc fails because client is offline", async () => {
+    getDoc.mockRejectedValueOnce(
+      Object.assign(new Error("Failed to get document because the client is offline."), {
+        code: "unavailable",
+      }),
+    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("{}", { status: 404 }));
+
+    await expect(fetchDiscordConnection("uid_1")).resolves.toBeNull();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/documents/discordConnections/uid_1"),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer mock-id-token" }),
+      }),
+    );
+
+    getDoc.mockRejectedValueOnce(
+      Object.assign(new Error("Failed to get document because the client is offline."), {
+        code: "unavailable",
+      }),
+    );
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          fields: {
+            userId: { stringValue: "uid_1" },
+            discordUserId: { stringValue: "99887766" },
+            username: { stringValue: "citizen" },
+            guildStatus: { stringValue: "member" },
+            guildPending: { booleanValue: false },
+            xp: { integerValue: "420" },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(fetchDiscordConnection("uid_1")).resolves.toEqual({
+      userId: "uid_1",
+      discordUserId: "99887766",
+      username: "citizen",
+      guildStatus: "member",
+      guildPending: false,
+      xp: 420,
+    });
+
+    fetchSpy.mockRestore();
+  });
+
+  it("still reports FirestoreErrorInfo JSON when permission is denied", async () => {
+    getDoc.mockRejectedValueOnce(
+      Object.assign(new Error("Missing or insufficient permissions."), {
+        code: "permission-denied",
+      }),
+    );
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(fetchDiscordConnection("uid_other")).rejects.toThrow(
+      '"operationType":"get","path":"discordConnections/uid_other"',
+    );
+    errSpy.mockRestore();
   });
 });

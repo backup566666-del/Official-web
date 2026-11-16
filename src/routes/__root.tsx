@@ -41,9 +41,40 @@ function NotFoundComponent() {
   );
 }
 
+const CHUNK_RELOAD_KEY = "freecity_chunk_reload_at";
+
+function isDynamicImportFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return (
+    message.includes("Failed to fetch dynamically imported module") ||
+    message.includes("Importing a module script failed") ||
+    message.includes("Outdated Optimize Dep")
+  );
+}
+
+function trySingleChunkReload(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const last = Number(window.sessionStorage.getItem(CHUNK_RELOAD_KEY) ?? "0");
+    if (Date.now() - last < 15_000) return false;
+    window.sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+    window.location.reload();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
+  const isChunkError = isDynamicImportFailure(error);
+
+  useEffect(() => {
+    if (isChunkError) {
+      trySingleChunkReload();
+    }
+  }, [isChunkError]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -57,6 +88,10 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              if (isChunkError) {
+                window.location.reload();
+                return;
+              }
               router.invalidate();
               reset();
             }}
@@ -88,11 +123,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Free City Organization — Open-World Roleplay Community" },
       {
         name: "description",
-        content: "Enter Free City Roleplay. Build your character, discover the city, meet people and create your own story.",
+        content:
+          "Enter Free City Roleplay. Build your character, discover the city, meet people and create your own story.",
       },
       { name: "author", content: "Free City Organization" },
       { property: "og:title", content: "Free City Organization" },
-      { property: "og:description", content: "Your city. Your story. An open-world RPG roleplay community." },
+      {
+        property: "og:description",
+        content: "Your city. Your story. An open-world RPG roleplay community.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -121,6 +160,11 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en" className="dark">
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var K=${JSON.stringify(CHUNK_RELOAD_KEY)};function r(e){try{var l=Number(sessionStorage.getItem(K)||"0");if(Date.now()-l<15000)return;if(e&&typeof e.preventDefault==="function")e.preventDefault();sessionStorage.setItem(K,String(Date.now()));location.reload()}catch(err){}}function c(m){return typeof m==="string"&&(m.indexOf("Failed to fetch dynamically imported module")!==-1||m.indexOf("Importing a module script failed")!==-1||m.indexOf("Outdated Optimize Dep")!==-1)}window.addEventListener("vite:preloadError",r);window.addEventListener("unhandledrejection",function(e){var x=e&&e.reason;if(c(x&&x.message?x.message:String(x||"")))r(e)});window.addEventListener("error",function(e){if(e&&c(e.message))r(e)})})();`,
+          }}
+        />
       </head>
       <body>
         {children}
@@ -141,6 +185,11 @@ function RootComponent() {
 
   // One app-wide listener: refresh route guards and data when the signed-in identity changes.
   useEffect(() => {
+    const handlePreloadError = () => {
+      trySingleChunkReload();
+    };
+    window.addEventListener("vite:preloadError", handlePreloadError);
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const nextUid = user?.uid ?? null;
       if (previousUidRef.current === undefined) {
@@ -153,7 +202,10 @@ function RootComponent() {
         if (nextUid) queryClient.invalidateQueries();
       }
     });
-    return () => unsubscribe();
+    return () => {
+      window.removeEventListener("vite:preloadError", handlePreloadError);
+      unsubscribe();
+    };
   }, [router, queryClient]);
 
   return (

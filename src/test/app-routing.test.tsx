@@ -14,4 +14,20 @@ describe("App routing", () => {
 
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
   });
+
+  it("matches the dedicated /dashboard/top-up route", () => {
+    const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+
+    const matches = router.matchRoutes("/dashboard/top-up");
+
+    expect(matches.at(-1)?.routeId).toBe("/_authenticated/dashboard/top-up");
+  });
+
+  it("matches the dedicated /dashboard/cash-top-up route", () => {
+    const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+
+    const matches = router.matchRoutes("/dashboard/cash-top-up");
+
+    expect(matches.at(-1)?.routeId).toBe("/_authenticated/dashboard/cash-top-up");
+  });
 });

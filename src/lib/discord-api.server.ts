@@ -49,8 +49,11 @@ export async function handleIntegrationApiRequest(request: Request): Promise<Res
   try {
     // Admin-only non-secret server configuration & Railway API health status
     if (path === "/api/integration/status" && request.method === "GET") {
-      if (user.email !== ADMIN_EMAIL) {
-        return jsonResponse({ error: "Admin access is required to inspect integration status." }, 403);
+      if (user.email.trim().toLowerCase() !== ADMIN_EMAIL) {
+        return jsonResponse(
+          { error: "Admin access is required to inspect integration status." },
+          403,
+        );
       }
 
       const discord = discordEnv();
@@ -85,7 +88,10 @@ export async function handleIntegrationApiRequest(request: Request): Promise<Res
     if (path === "/api/discord/start" && request.method === "POST") {
       const discord = discordEnv();
       if (!discord.oauthConfigured) {
-        return jsonResponse({ error: "Discord OAuth credentials are not configured on the server yet." }, 503);
+        return jsonResponse(
+          { error: "Discord OAuth credentials are not configured on the server yet." },
+          503,
+        );
       }
 
       const body = await readJsonBody(request);

@@ -8,18 +8,37 @@ import {
   getDocFromServer,
   getDocs,
   getFirestore,
+  initializeFirestore,
   query,
   serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
   where,
+  type Firestore,
 } from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+function createFirestoreDb(): Firestore {
+  if (typeof window === "undefined" || typeof initializeFirestore !== "function") {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+  try {
+    return initializeFirestore(
+      app,
+      {
+        experimentalAutoDetectLongPolling: true,
+      },
+      firebaseConfig.firestoreDatabaseId,
+    );
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+}
+
+export const db = createFirestoreDb();
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
@@ -50,7 +69,11 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+): never {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -70,6 +93,148 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
   console.error("Firestore Error: ", JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+function isUnavailableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String((error as { code: unknown }).code) : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    code === "unavailable" ||
+    message.includes("client is offline") ||
+    message.includes("Could not reach Cloud Firestore backend")
+  );
+}
+
+type FirestoreRestValue =
+  | { stringValue: string }
+  | { integerValue: string }
+  | { doubleValue: number }
+  | { booleanValue: boolean }
+  | { timestampValue: string }
+  | { nullValue: null }
+  | { arrayValue: { values?: FirestoreRestValue[] } }
+  | { mapValue: { fields?: Record<string, FirestoreRestValue> } };
+
+function decodeRestValue(value: FirestoreRestValue): unknown {
+  if ("stringValue" in value) return value.stringValue;
+  if ("timestampValue" in value) return value.timestampValue;
+  if ("booleanValue" in value) return value.booleanValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return value.doubleValue;
+  if ("nullValue" in value) return null;
+  if ("arrayValue" in value) return (value.arrayValue.values ?? []).map(decodeRestValue);
+  if ("mapValue" in value) {
+    const out: Record<string, unknown> = {};
+    for (const [k, child] of Object.entries(value.mapValue.fields ?? {})) {
+      out[k] = decodeRestValue(child);
+    }
+    return out;
+  }
+  return undefined;
+}
+
+function decodeRestFields<T extends Record<string, unknown>>(
+  fields?: Record<string, FirestoreRestValue>,
+): T {
+  const out: Record<string, unknown> = {};
+  if (!fields) return out as T;
+  for (const [key, value] of Object.entries(fields)) {
+    out[key] = decodeRestValue(value);
+  }
+  return out as T;
+}
+
+function firestoreRestDocumentsBase(): string {
+  const databaseId = firebaseConfig.firestoreDatabaseId || "(default)";
+  return `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${databaseId}/documents`;
+}
+
+async function getRestAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  const currentUser = auth.currentUser;
+  if (currentUser && typeof currentUser.getIdToken === "function") {
+    try {
+      const token = await currentUser.getIdToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    } catch {
+      // Proceed without token for public queries (e.g., published events).
+    }
+  }
+  return headers;
+}
+
+async function restGetDoc<T extends Record<string, unknown>>(
+  collectionName: string,
+  docId: string,
+  path: string,
+): Promise<T | null> {
+  const url = `${firestoreRestDocumentsBase()}/${encodeURIComponent(collectionName)}/${encodeURIComponent(docId)}?key=${encodeURIComponent(firebaseConfig.apiKey)}`;
+  const headers = await getRestAuthHeaders();
+  const res = await fetch(url, { headers });
+  if (res.status === 404) return null;
+  if (res.status === 403) {
+    handleFirestoreError(
+      new Error("Missing or insufficient permissions."),
+      OperationType.GET,
+      path,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`Firestore request failed (${res.status}).`);
+  }
+  const body = (await res.json()) as { fields?: Record<string, FirestoreRestValue> };
+  return decodeRestFields<T>(body.fields);
+}
+
+async function restRunQuery<T extends Record<string, unknown>>(
+  collectionName: string,
+  fieldPath: string,
+  value: string | boolean,
+  path: string,
+): Promise<Array<T & { id: string }>> {
+  const url = `${firestoreRestDocumentsBase()}:runQuery?key=${encodeURIComponent(firebaseConfig.apiKey)}`;
+  const headers = {
+    ...(await getRestAuthHeaders()),
+    "Content-Type": "application/json",
+  };
+  const restVal = typeof value === "boolean" ? { booleanValue: value } : { stringValue: value };
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: collectionName }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath },
+            op: "EQUAL",
+            value: restVal,
+          },
+        },
+      },
+    }),
+  });
+  if (res.status === 403) {
+    handleFirestoreError(
+      new Error("Missing or insufficient permissions."),
+      OperationType.LIST,
+      path,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`Firestore query failed (${res.status}).`);
+  }
+  const rows = (await res.json()) as Array<{
+    document?: { name?: string; fields?: Record<string, FirestoreRestValue> };
+  }>;
+  return rows
+    .filter((row) => Boolean(row.document?.fields))
+    .map((row) => {
+      const fullName = row.document?.name ?? "";
+      const id = fullName.split("/").pop() ?? "";
+      return { id, ...decodeRestFields<T>(row.document?.fields) };
+    });
 }
 
 async function testConnection() {
@@ -148,21 +313,34 @@ export type DiscordConnectionDoc = {
 export const ADMIN_EMAIL = "michalmark496@gmail.com";
 
 export function isAdminUser(user: User | null | undefined): boolean {
-  return Boolean(user && user.emailVerified && user.email === ADMIN_EMAIL);
+  return Boolean(user && user.emailVerified && user.email?.trim().toLowerCase() === ADMIN_EMAIL);
 }
 
 export function formatFirestoreDate(value: unknown): string {
   if (!value) return "—";
   if (value instanceof Timestamp) {
-    return value.toDate().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    return value
+      .toDate()
+      .toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
   }
-  if (typeof value === "object" && value !== null && "toDate" in value && typeof (value as { toDate: unknown }).toDate === "function") {
-    return (value as { toDate: () => Date }).toDate().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toDate" in value &&
+    typeof (value as { toDate: unknown }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date })
+      .toDate()
+      .toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
   }
   if (typeof value === "string") {
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+      return parsed.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
     }
   }
   return "—";
@@ -170,7 +348,12 @@ export function formatFirestoreDate(value: unknown): string {
 
 function toMillis(value: unknown): number {
   if (value instanceof Timestamp) return value.toMillis();
-  if (typeof value === "object" && value !== null && "toMillis" in value && typeof (value as { toMillis: unknown }).toMillis === "function") {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toMillis" in value &&
+    typeof (value as { toMillis: unknown }).toMillis === "function"
+  ) {
     return (value as { toMillis: () => number }).toMillis();
   }
   if (typeof value === "string") {
@@ -209,6 +392,9 @@ export async function syncUserProfile(user: User): Promise<void> {
       });
     }
   } catch (error) {
+    if (isUnavailableError(error)) {
+      return;
+    }
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
@@ -219,6 +405,9 @@ export async function fetchUserProfile(uid: string): Promise<UserProfileDoc | nu
     const snap = await getDoc(doc(db, "users", uid));
     return snap.exists() ? (snap.data() as UserProfileDoc) : null;
   } catch (error) {
+    if (isUnavailableError(error)) {
+      return await restGetDoc<UserProfileDoc>("users", uid, path);
+    }
     handleFirestoreError(error, OperationType.GET, path);
   }
 }
@@ -229,6 +418,9 @@ export async function fetchDiscordConnection(uid: string): Promise<DiscordConnec
     const snap = await getDoc(doc(db, "discordConnections", uid));
     return snap.exists() ? (snap.data() as DiscordConnectionDoc) : null;
   } catch (error) {
+    if (isUnavailableError(error)) {
+      return await restGetDoc<DiscordConnectionDoc>("discordConnections", uid, path);
+    }
     handleFirestoreError(error, OperationType.GET, path);
   }
 }
@@ -242,6 +434,15 @@ export async function fetchPublishedEvents(): Promise<CommunityEventDoc[]> {
       .map((d) => ({ id: d.id, ...(d.data() as Omit<CommunityEventDoc, "id">) }))
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   } catch (error) {
+    if (isUnavailableError(error)) {
+      const items = await restRunQuery<Omit<CommunityEventDoc, "id">>(
+        "events",
+        "published",
+        true,
+        path,
+      );
+      return items.sort((a, b) => String(a.startsAt ?? "").localeCompare(String(b.startsAt ?? "")));
+    }
     handleFirestoreError(error, OperationType.LIST, path);
   }
 }
@@ -286,6 +487,15 @@ export async function fetchMemberApplications(uid: string): Promise<MemberApplic
       .map((d) => ({ id: d.id, ...(d.data() as Omit<MemberApplicationDoc, "id">) }))
       .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
   } catch (error) {
+    if (isUnavailableError(error)) {
+      const items = await restRunQuery<Omit<MemberApplicationDoc, "id">>(
+        "applications",
+        "userId",
+        uid,
+        path,
+      );
+      return items.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+    }
     handleFirestoreError(error, OperationType.LIST, path);
   }
 }

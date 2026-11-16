@@ -39,6 +39,7 @@
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
   --color-neon: var(--neon);
+  --color-neon-pink: var(--neon-pink);
   --color-electric: var(--electric);
   --color-glass: var(--glass);
   --color-glass-border: var(--glass-border);
@@ -81,15 +82,29 @@
   --ring: oklch(0.64 0.23 300);
 
   --neon: oklch(0.66 0.25 310);
+  --neon-pink: oklch(0.68 0.24 345);
   --electric: oklch(0.74 0.16 230);
   --glass: oklch(0.14 0.03 280 / 55%);
   --glass-border: oklch(1 0 0 / 12%);
 
   --gradient-neon: linear-gradient(100deg, var(--neon), var(--electric));
-  --gradient-fade-bottom: linear-gradient(to bottom, transparent 0%, oklch(0.12 0.025 280 / 70%) 60%, var(--background) 100%);
-  --gradient-vignette: radial-gradient(ellipse at 50% 40%, transparent 30%, oklch(0.08 0.02 280 / 85%) 100%);
+  --gradient-neon-pink: linear-gradient(110deg, var(--neon), var(--neon-pink));
+  --gradient-fade-bottom: linear-gradient(
+    to bottom,
+    transparent 0%,
+    oklch(0.12 0.025 280 / 70%) 60%,
+    var(--background) 100%
+  );
+  --gradient-vignette: radial-gradient(
+    ellipse at 50% 40%,
+    transparent 30%,
+    oklch(0.08 0.02 280 / 85%) 100%
+  );
   --shadow-neon: 0 0 0 1px oklch(0.66 0.25 310 / 50%), 0 10px 40px -8px oklch(0.66 0.25 310 / 60%);
-  --shadow-electric: 0 0 0 1px oklch(0.74 0.16 230 / 45%), 0 10px 40px -10px oklch(0.74 0.16 230 / 55%);
+  --shadow-neon-pink:
+    0 0 0 1px oklch(0.68 0.24 345 / 45%), 0 12px 38px -10px oklch(0.66 0.25 310 / 55%);
+  --shadow-electric:
+    0 0 0 1px oklch(0.74 0.16 230 / 45%), 0 10px 40px -10px oklch(0.74 0.16 230 / 55%);
 
   --chart-1: oklch(0.64 0.23 300);
   --chart-2: oklch(0.74 0.15 230);
@@ -148,6 +163,16 @@
   -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
+@utility glass-neon {
+  background: oklch(0.11 0.035 292 / 72%);
+  border: 1px solid oklch(0.68 0.24 325 / 38%);
+  box-shadow:
+    0 0 0 1px oklch(0.66 0.25 310 / 18%),
+    0 14px 40px -14px oklch(0.66 0.25 310 / 40%);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+}
+
 @utility glass-strong {
   background: oklch(0.11 0.025 280 / 88%);
   border-bottom: 1px solid var(--glass-border);
@@ -157,6 +182,10 @@
 
 @utility shadow-neon {
   box-shadow: var(--shadow-neon);
+}
+
+@utility shadow-neon-pink {
+  box-shadow: var(--shadow-neon-pink);
 }
 
 @utility shadow-electric {
@@ -199,32 +228,69 @@
 
 /* Animations */
 @keyframes slow-zoom {
-  from { transform: scale(1.06); }
-  to { transform: scale(1.14) translate3d(-1%, -1%, 0); }
+  from {
+    transform: scale(1.06);
+  }
+  to {
+    transform: scale(1.14) translate3d(-1%, -1%, 0);
+  }
 }
 @keyframes fade-up {
-  from { opacity: 0; transform: translate3d(0, 24px, 0); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes slide-left {
-  from { opacity: 0; transform: translate3d(-60px, 0, 0); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translate3d(-60px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes slide-right {
-  from { opacity: 0; transform: translate3d(80px, 0, 0); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translate3d(80px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes neon-pulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 0.9; }
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 @keyframes light-sweep {
-  0% { transform: translateX(-120%) skewX(-20deg); }
-  60%, 100% { transform: translateX(220%) skewX(-20deg); }
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  60%,
+  100% {
+    transform: translateX(220%) skewX(-20deg);
+  }
 }
 @keyframes drift {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(3%, -2%, 0); }
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(3%, -2%, 0);
+  }
 }
 
 @utility animate-slow-zoom {
@@ -260,7 +326,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
@@ -285,7 +353,9 @@
   font-size: 14px;
   line-height: 20px;
   cursor: pointer;
-  transition: box-shadow 0.2s ease, opacity 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
   &:hover {
     box-shadow: var(--shadow-electric);
   }

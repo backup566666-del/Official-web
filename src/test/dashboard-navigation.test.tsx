@@ -43,8 +43,11 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
       </a>
     ),
     useNavigate: () => navigateMock,
-    useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) =>
-      select({ location: { pathname: currentPathname } }),
+    useRouterState: ({
+      select,
+    }: {
+      select: (state: { location: { pathname: string } }) => string;
+    }) => select({ location: { pathname: currentPathname } }),
   };
 });
 
@@ -78,6 +81,8 @@ const EXPECTED_MENU_LABELS = [
   "VIP Membership",
   "Applications",
   "Game Website & Installation",
+  "Game Top-up",
+  "Cash Top-up",
   "Events",
   "Settings",
   "Support",
@@ -97,7 +102,7 @@ describe("Member Dashboard Navigation & Discord Status", () => {
     navigateMock.mockClear();
   });
 
-  it("renders all 10 required sections in the desktop sidebar in order", () => {
+  it("renders all 11 required sections, Free City logo, Join Discord button, and welcome header in the desktop sidebar", async () => {
     renderWithQuery(
       <DashboardShell user={mockUser}>
         <div>Dashboard Content</div>
@@ -108,9 +113,18 @@ describe("Member Dashboard Navigation & Discord Status", () => {
     const links = within(desktopNav).getAllByRole("link");
     expect(links.map((el) => el.textContent?.trim())).toEqual(EXPECTED_MENU_LABELS);
 
-    const sidebar = desktopNav.closest("aside");
+    const sidebar = desktopNav.closest("aside")!;
     expect(sidebar).not.toBeNull();
-    expect(within(sidebar!).getByRole("button", { name: "Log Out" })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("link", { name: "Join Free City Discord" })).toHaveAttribute(
+      "href",
+      "https://discord.gg/RXCrsjS7m",
+    );
+    expect(within(sidebar).getByRole("button", { name: "Log Out" })).toBeInTheDocument();
+
+    expect(screen.getByText(/Welcome back,/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/Google Signed In · Discord Not Connected/i)).toBeInTheDocument();
+    });
   });
 
   it("opens the mobile slide-out drawer from the menu button and closes it after selecting a page", async () => {
@@ -125,18 +139,25 @@ describe("Member Dashboard Navigation & Discord Status", () => {
 
     fireEvent.click(menuButton);
 
-    const mobileNav = await screen.findByRole("navigation", { name: "Mobile dashboard navigation" });
+    const mobileNav = await screen.findByRole("navigation", {
+      name: "Mobile dashboard navigation",
+    });
     const mobileLinks = within(mobileNav).getAllByRole("link");
     expect(mobileLinks.map((el) => el.textContent?.trim())).toEqual(EXPECTED_MENU_LABELS);
 
     const drawerDialog = mobileNav.closest('[role="dialog"]') as HTMLElement;
     expect(drawerDialog).not.toBeNull();
+    expect(
+      within(drawerDialog).getByRole("link", { name: "Join Free City Discord" }),
+    ).toHaveAttribute("href", "https://discord.gg/RXCrsjS7m");
     expect(within(drawerDialog).getByRole("button", { name: "Log Out" })).toBeInTheDocument();
 
     fireEvent.click(within(mobileNav).getByRole("link", { name: "VIP Membership" }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("navigation", { name: "Mobile dashboard navigation" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("navigation", { name: "Mobile dashboard navigation" }),
+      ).not.toBeInTheDocument();
     });
   });
 
