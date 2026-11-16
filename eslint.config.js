@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import firebaseRulesPlugin from "@firebase/eslint-plugin-security-rules";
 import eslintPluginPrettier from "eslint-plugin-prettier/recommended";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
@@ -36,5 +37,9 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
-  eslintPluginPrettier,
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    ...eslintPluginPrettier,
+  },
+  firebaseRulesPlugin.configs["flat/recommended"],
 );

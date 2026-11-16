@@ -1,20 +1,16 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
-import { getGoogleSessionUser } from "@/lib/google-auth";
+import { auth } from "@/lib/firebase";
 
-// Members-only area. Checks Supabase session first, then server-signed Google OAuth session.
+// Members-only area. Client-side gate backed by Firebase Authentication; Firestore security
+// rules independently enforce per-member authorization on all database reads and writes.
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data.user) {
-      return { user: data.user };
+    await auth.authStateReady();
+    if (!auth.currentUser) {
+      throw redirect({ to: "/login" });
     }
-    const googleUser = await getGoogleSessionUser();
-    if (googleUser) {
-      return { user: googleUser };
-    }
-    throw redirect({ to: "/login" });
+    return { user: auth.currentUser };
   },
   component: () => <Outlet />,
 });

@@ -1,6 +1,4 @@
-// Placeholder links: replace with the real URLs when they are supplied.
-// An empty string means "not provided yet" — buttons show a "coming soon" notice instead.
-export const DISCORD_INVITE_URL = "";
+export const DISCORD_INVITE_URL = "https://discord.gg/RXCrsjS7m";
 
 export const NAV_LINKS = [
   { to: "/", label: "Home" },

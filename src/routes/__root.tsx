@@ -6,13 +6,14 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useRouterState,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useRef, type ReactNode } from "react";
+import { auth } from "@/lib/firebase";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { CityBackground } from "@/components/site/CityBackground";
 import { SiteHeader } from "@/components/site/SiteHeader";
@@ -43,9 +44,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -135,26 +133,38 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+  const previousUidRef = useRef<string | null | undefined>(undefined);
+  const isDashboardRoute = useRouterState({
+    select: (state) =>
+      state.location.pathname === "/dashboard" || state.location.pathname.startsWith("/dashboard/"),
+  });
 
   // One app-wide listener: refresh route guards and data when the signed-in identity changes.
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
-      router.invalidate();
-      if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const nextUid = user?.uid ?? null;
+      if (previousUidRef.current === undefined) {
+        previousUidRef.current = nextUid;
+        return;
+      }
+      if (previousUidRef.current !== nextUid) {
+        previousUidRef.current = nextUid;
+        router.invalidate();
+        if (nextUid) queryClient.invalidateQueries();
+      }
     });
-    return () => data.subscription.unsubscribe();
+    return () => unsubscribe();
   }, [router, queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <CityBackground />
-      <SiteHeader />
+      {!isDashboardRoute && <SiteHeader />}
       <main className="relative">
         <Outlet />
       </main>
-      <SiteFooter />
+      {!isDashboardRoute && <SiteFooter />}
       <Toaster position="bottom-center" />
     </QueryClientProvider>
   );

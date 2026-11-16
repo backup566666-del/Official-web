@@ -174,9 +174,16 @@ function GetStarted() {
               <span className="font-display text-4xl font-black leading-none text-gradient-neon">
                 0{i + 1}
               </span>
-              <div>
+              <div className="min-w-0 flex-1">
                 <h3 className="font-display text-xl font-extrabold uppercase tracking-wide">{s.title}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">{s.text}</p>
+                {i === 0 && (
+                  <div className="mt-4">
+                    <DiscordButton size="lg" className="w-full rounded-full sm:w-auto">
+                      Join the Discord
+                    </DiscordButton>
+                  </div>
+                )}
               </div>
             </li>
           ))}

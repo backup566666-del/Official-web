@@ -1,0 +1,336 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private Free City member profile synced from Google Sign-In.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the member.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Google email address of the member.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Display name from Google account.",
+          "maxLength": 120
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Profile picture URL from Google account.",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was first created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "DiscordConnection": {
+      "title": "DiscordConnection",
+      "description": "Linked Discord account summary for a Free City member (written server-side only).",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "discordUserId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "globalName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "avatarUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "guildStatus": {
+          "type": "string",
+          "enum": ["unknown", "member", "not_member", "reconnect_required"]
+        },
+        "guildPending": {
+          "type": "boolean"
+        },
+        "roleIds": {
+          "type": "array",
+          "description": "Discord guild role IDs verified for this member."
+        },
+        "roles": {
+          "type": "array",
+          "description": "Human-readable Discord server role names resolved from the bot or guild."
+        },
+        "level": {
+          "type": "number",
+          "description": "Member level retrieved from the Free City bot API."
+        },
+        "xp": {
+          "type": "number",
+          "description": "Member XP retrieved from the Free City bot API."
+        },
+        "messageCount": {
+          "type": "number",
+          "description": "Discord message count retrieved from the Free City bot API."
+        },
+        "vipStatus": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "premiumActive": {
+          "type": "boolean"
+        },
+        "premiumTier": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "premiumExpiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        },
+        "aiAccessEnabled": {
+          "type": "boolean"
+        },
+        "aiAccessTier": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "guildJoinedAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        },
+        "guildCheckedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "botSyncedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "botSyncStatus": {
+          "type": "string",
+          "enum": ["not_configured", "synced", "not_found", "error"]
+        },
+        "connectedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "discordUserId", "username", "guildStatus", "guildPending", "connectedAt", "updatedAt"]
+    },
+    "DiscordOAuthState": {
+      "title": "DiscordOAuthState",
+      "description": "Server-only single-use CSRF state hash for Discord OAuth.",
+      "type": "object",
+      "properties": {
+        "stateHash": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "redirectUri": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["stateHash", "userId", "redirectUri", "expiresAt"]
+    },
+    "DiscordOAuthToken": {
+      "title": "DiscordOAuthToken",
+      "description": "Server-only Discord OAuth access and refresh tokens.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "accessToken": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "refreshToken": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "accessToken", "expiresAt"]
+    },
+    "CommunityEvent": {
+      "title": "CommunityEvent",
+      "description": "Free City community event published by admins.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "description": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 2000
+        },
+        "startsAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 64
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "published": {
+          "type": "boolean"
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["title", "description", "startsAt", "published", "createdBy", "createdAt", "updatedAt"]
+    },
+    "MemberApplication": {
+      "title": "MemberApplication",
+      "description": "Character/community application submitted by an authenticated member.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "characterName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "discordHandle": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "backstory": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 2000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "characterName", "discordHandle", "backstory", "status", "createdAt", "updatedAt"]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Trusted admin lookup record.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "grantedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private member profile documents owned by each authenticated user."
+    },
+    "/discordConnections/{userId}": {
+      "schema": { "$ref": "#/entities/DiscordConnection" },
+      "description": "Discord account link summary readable only by the owning member or admin."
+    },
+    "/discordOAuthStates/{stateHash}": {
+      "schema": { "$ref": "#/entities/DiscordOAuthState" },
+      "description": "Server-only single-use CSRF state hashes for Discord OAuth."
+    },
+    "/discordOAuthTokens/{userId}": {
+      "schema": { "$ref": "#/entities/DiscordOAuthToken" },
+      "description": "Server-only Discord OAuth credentials."
+    },
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/CommunityEvent" },
+      "description": "Community events readable by visitors when published and managed by admins."
+    },
+    "/applications/{applicationId}": {
+      "schema": { "$ref": "#/entities/MemberApplication" },
+      "description": "Member character/community applications scoped to the submitting member and admins."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Admin role records checked by security rules."
+    }
+  }
+}

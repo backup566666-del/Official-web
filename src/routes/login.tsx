@@ -1,12 +1,7 @@
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
-import {
-  completeGooglePopupSession,
-  getGoogleAuthConfig,
-  getGoogleSessionUser,
-} from "@/lib/google-auth";
+import { onAuthStateChanged, signInWithPopup } from "firebase/auth";
+import { useEffect, useState } from "react";
+import { auth, googleProvider, syncUserProfile } from "@/lib/firebase";
 import { GoogleButton } from "@/components/site/GoogleButton";
 import { PageIntro } from "@/components/site/PageIntro";
 
@@ -24,133 +19,66 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+function formatAuthError(err: unknown): string {
+  if (err && typeof err === "object" && "code" in err) {
+    const code = String((err as { code: unknown }).code);
+    switch (code) {
+      case "auth/popup-closed-by-user":
+      case "auth/cancelled-popup-request":
+        return "Google sign-in was cancelled. Please try again.";
+      case "auth/popup-blocked":
+        return "Your browser blocked the Google sign-in popup. Please allow popups for this site and try again.";
+      case "auth/unauthorized-domain":
+        return "This domain is not authorized in Firebase Authentication yet. Add it under Firebase Console → Authentication → Settings → Authorized domains.";
+      case "auth/network-request-failed":
+        return "Network error while contacting Google sign-in. Please check your connection and try again.";
+      default:
+        break;
+    }
+  }
+  return "Google sign-in didn't complete. Please try again.";
+}
+
 function LoginPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const popupTimerRef = useRef<number | null>(null);
 
-  // Already signed in (or just returned from Google): go straight to the dashboard.
+  // Already signed in: go straight to the member dashboard.
   useEffect(() => {
     let active = true;
 
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("oauth_error")) {
-      setError("Google sign-in didn't complete. Please try again.");
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-
-    Promise.all([
-      supabase.auth.getUser().then(({ data }) => data.user ?? null).catch(() => null),
-      getGoogleSessionUser(),
-    ]).then(([supabaseUser, googleUser]) => {
-      if (active && (supabaseUser || googleUser)) {
+    void auth.authStateReady().then(() => {
+      if (active && auth.currentUser) {
         navigate({ to: "/dashboard", replace: true });
       }
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session?.user) navigate({ to: "/dashboard", replace: true });
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (active && firebaseUser) {
+        navigate({ to: "/dashboard", replace: true });
+      }
     });
-
-    const onMessage = async (event: MessageEvent) => {
-      const origin = event.origin;
-      if (
-        origin !== window.location.origin &&
-        !origin.endsWith(".run.app") &&
-        !origin.includes("localhost")
-      ) {
-        return;
-      }
-      if (event.data?.type === "FC_GOOGLE_AUTH_SUCCESS" && typeof event.data.sessionToken === "string") {
-        if (popupTimerRef.current !== null) {
-          window.clearInterval(popupTimerRef.current);
-          popupTimerRef.current = null;
-        }
-        const user = await completeGooglePopupSession(event.data.sessionToken);
-        if (user) {
-          await router.invalidate();
-          navigate({ to: "/dashboard", replace: true });
-        } else {
-          setBusy(false);
-          setError("Could not verify your Google session. Please try again.");
-        }
-      } else if (event.data?.type === "FC_GOOGLE_AUTH_ERROR") {
-        if (popupTimerRef.current !== null) {
-          window.clearInterval(popupTimerRef.current);
-          popupTimerRef.current = null;
-        }
-        setBusy(false);
-        setError(typeof event.data.message === "string" ? event.data.message : "Google sign-in didn't complete. Please try again.");
-      }
-    };
-
-    window.addEventListener("message", onMessage);
 
     return () => {
       active = false;
-      if (popupTimerRef.current !== null) window.clearInterval(popupTimerRef.current);
-      window.removeEventListener("message", onMessage);
-      sub.subscription.unsubscribe();
+      unsubscribe();
     };
-  }, [navigate, router]);
+  }, [navigate]);
 
   async function handleGoogle() {
     setError(null);
     setBusy(true);
-
-    const framed = window.self !== window.top;
-    // Open a blank popup synchronously on user click when framed so popup blockers allow it.
-    const popup = framed ? window.open("", "fc_google_oauth", "width=520,height=680") : null;
-
     try {
-      const config = await getGoogleAuthConfig(framed ? "popup" : "redirect");
-      if (config.configured && config.url) {
-        if (framed) {
-          if (!popup) {
-            setBusy(false);
-            setError("Please allow popups for this site to sign in with Google.");
-            return;
-          }
-          popup.location.href = config.url;
-          popupTimerRef.current = window.setInterval(() => {
-            if (popup.closed) {
-              if (popupTimerRef.current !== null) {
-                window.clearInterval(popupTimerRef.current);
-                popupTimerRef.current = null;
-              }
-              setBusy(false);
-            }
-          }, 400);
-          return;
-        }
-        window.location.assign(config.url);
-        return;
-      }
-
-      popup?.close();
-    } catch {
-      popup?.close();
-    }
-
-    // Fallback to existing Lovable Cloud / Supabase OAuth if configured.
-    if (import.meta.env["VITE_SUPABASE_URL"]) {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/login`,
-      });
-      if (result.error) {
-        setBusy(false);
-        setError("Google sign-in didn't complete. Please try again.");
-        return;
-      }
-      if (result.redirected) return;
+      const credential = await signInWithPopup(auth, googleProvider);
+      await syncUserProfile(credential.user);
+      await router.invalidate();
       navigate({ to: "/dashboard", replace: true });
-      return;
+    } catch (err) {
+      setError(formatAuthError(err));
+      setBusy(false);
     }
-
-    setBusy(false);
-    setError("Google OAuth is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.");
   }
 
   return (
@@ -164,7 +92,7 @@ function LoginPage() {
           </p>
         </div>
         <GoogleButton onClick={handleGoogle} disabled={busy}>
-          Continue with Google
+          {busy ? "Signing in with Google…" : "Continue with Google"}
         </GoogleButton>
         {error && (
           <p role="alert" className="text-sm text-destructive">

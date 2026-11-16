@@ -6,7 +6,7 @@ export function DiscordButton({ children = "Join our Discord", ...props }: Butto
   if (DISCORD_INVITE_URL) {
     return (
       <Button asChild variant="neon" size="xl" {...props}>
-        <a href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">
+        <a href={DISCORD_INVITE_URL} target="_blank" rel="noopener noreferrer">
           {children}
         </a>
       </Button>

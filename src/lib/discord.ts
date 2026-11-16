@@ -51,7 +51,7 @@ export function discordAvatarUrl(discordUserId: string, avatarHash: string | nul
 }
 
 export type MembershipResult =
-  | { kind: "member"; joinedAt: string | null; pending: boolean }
+  | { kind: "member"; joinedAt: string | null; pending: boolean; roleIds: string[] }
   | { kind: "not_member" }
   | { kind: "reconnect_required" }
   | { kind: "temporary"; message: string };
@@ -59,11 +59,13 @@ export type MembershipResult =
 /** Turn Discord's answer to GET /users/@me/guilds/{guild}/member into a membership result. */
 export function interpretMemberResponse(status: number, body: unknown): MembershipResult {
   if (status === 200 && body && typeof body === "object") {
-    const b = body as { joined_at?: unknown; pending?: unknown };
+    const b = body as { joined_at?: unknown; pending?: unknown; roles?: unknown };
+    const roleIds = Array.isArray(b.roles) ? b.roles.filter((r): r is string => typeof r === "string") : [];
     return {
       kind: "member",
       joinedAt: typeof b.joined_at === "string" ? b.joined_at : null,
       pending: b.pending === true,
+      roleIds,
     };
   }
   // 10004 Unknown Guild: Discord's answer when this user is not in the server.
